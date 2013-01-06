@@ -15,7 +15,13 @@ import org.mortbay.thread.QueuedThreadPool;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Key;
+import com.google.inject.Provider;
 import com.google.inject.Provides;
+import com.linkedin.norbert.javacompat.cluster.ClusterClient;
+import com.linkedin.norbert.javacompat.cluster.ZooKeeperClusterClient;
+import com.linkedin.norbert.javacompat.network.NettyNetworkServer;
+import com.linkedin.norbert.javacompat.network.NetworkServer;
+import com.linkedin.norbert.javacompat.network.NetworkServerConfig;
 import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
 import com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory;
 import com.senseidb.gateway.SenseiGateway;
@@ -26,7 +32,7 @@ import com.senseidb.servlet.DefaultSenseiJSONServlet;
 import com.senseidb.servlet.SenseiConfigServletContextListener;
 import com.senseidb.servlet.SenseiHttpInvokerServiceServlet;
 
-public class SenseiModule extends AbstractModule implements SenseiConfParams{
+public class SenseiModule extends AbstractModule implements SenseiConfParams,Provider<SenseiNode>{
   
   private static Logger logger = Logger.getLogger(SenseiModule.class);
   static final String SENSEI_CONTEXT_PATH = "sensei";
@@ -35,6 +41,7 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams{
   private final Key<SenseiNode> exposedKey;
   private SenseiPluginRegistry pluginRegistry;
   private final SenseiGateway gateway;
+  private SenseiNode senseiNode;
   
   public SenseiModule(Configuration confDir, Key<SenseiNode> exposedKey){
     this.senseiConf = confDir;
@@ -45,7 +52,6 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams{
     processRelevanceFunctionPlugins(pluginRegistry);
 
     gateway = pluginRegistry.getBeanByFullPrefix(SENSEI_GATEWAY, SenseiGateway.class);
-
   }
   
   private void processRelevanceFunctionPlugins(SenseiPluginRegistry pluginRegistry)
@@ -63,8 +69,9 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams{
   
   @Override
   protected void configure() {
-    System.out.println("installing confDir: "+senseiConf);
+    senseiNode = new SenseiNode();
   }
+  
 
   @Provides
   public Server buildHttpRestServer() throws Exception{
@@ -126,5 +133,38 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams{
     server.setStopAtShutdown(true);
 
     return server;
+  }
+  
+  @Provides
+  public ClusterClient buildClusterClient()
+  {
+    String clusterName = senseiConf.getString(SENSEI_CLUSTER_NAME);
+    String clusterClientName = senseiConf.getString(SENSEI_CLUSTER_CLIENT_NAME,clusterName);
+    String zkUrl = senseiConf.getString(SENSEI_CLUSTER_URL);
+    int zkTimeout = senseiConf.getInt(SENSEI_CLUSTER_TIMEOUT, 300000);
+    ClusterClient clusterClient =  new ZooKeeperClusterClient(clusterClientName, clusterName, zkUrl, zkTimeout);
+
+    logger.info("Connecting to cluster: "+clusterName+" ...");
+    clusterClient.awaitConnectionUninterruptibly();
+
+    logger.info("Cluster: "+clusterName+" successfully connected ");
+
+    return clusterClient;
+  }
+
+  @Provides
+  private NetworkServer buildNetworkServer(ClusterClient clusterClient){
+    NetworkServerConfig networkConfig = new NetworkServerConfig();
+    networkConfig.setClusterClient(clusterClient);
+
+    networkConfig.setRequestThreadCorePoolSize(senseiConf.getInt(SERVER_REQ_THREAD_POOL_SIZE, 20));
+    networkConfig.setRequestThreadMaxPoolSize(senseiConf.getInt(SERVER_REQ_THREAD_POOL_MAXSIZE,70));
+    networkConfig.setRequestThreadKeepAliveTimeSecs(senseiConf.getInt(SERVER_REQ_THREAD_POOL_KEEPALIVE,300));
+    return new NettyNetworkServer(networkConfig);
+  }
+
+  @Override
+  public SenseiNode get() {
+    return senseiNode;
   }
 }

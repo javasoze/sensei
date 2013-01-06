@@ -1,5 +1,6 @@
 package com.senseidb.conf;
 
+import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.commons.configuration.Configuration;
@@ -12,19 +13,27 @@ import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.PrivateModule;
+import com.google.inject.Provider;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.name.Names;
 
 public class SenseiMultiModule extends AbstractModule {
 
   private final List<Configuration> confDirs;
+  private final List<Key<SenseiNode>> keys;
   
   public SenseiMultiModule(List<Configuration> confDirs){
     this.confDirs = confDirs;
+    this.keys = new LinkedList<Key<SenseiNode>>();
+  }
+  
+  private List<Key<SenseiNode>> getKeys(){
+    return keys;
   }
   
   private Key<SenseiNode> configureNode(final Configuration conf,int count){
     final Key<SenseiNode> keyToExpose = Key.get(SenseiNode.class, Names.named(conf.toString()+"-"+count));
+    keys.add(keyToExpose);
     install(new PrivateModule() {
       @Override public void configure() {
 
@@ -60,8 +69,11 @@ public class SenseiMultiModule extends AbstractModule {
     
     List<Configuration> confDirs = Arrays.asList(new Configuration[]{new PropertiesConfiguration(node1ConfPath)});
     
-    Injector injector = Guice.createInjector(new SenseiMultiModule(confDirs));
+    SenseiMultiModule senseiMultiModule = new SenseiMultiModule(confDirs);
+    Injector injector = Guice.createInjector(senseiMultiModule);
     
+    Provider<SenseiNode> senseiNodeProvider = injector.getProvider(senseiMultiModule.getKeys().get(0));
+    SenseiNode node = senseiNodeProvider.get();
   }
 
 }
