@@ -10,4 +10,13 @@ public class SenseiNode {
   @Inject ClusterClient clusterClient;
   @Inject NetworkServer networkServer;
   @Inject Server httpServer;
+  
+  public void start() throws Exception{
+    
+	  httpServer.start();
+  }
+  
+  public void stop() throws Exception{
+    httpServer.stop();
+  }
 }

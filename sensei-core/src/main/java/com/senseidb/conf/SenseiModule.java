@@ -69,6 +69,7 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams,Pro
   
   @Override
   protected void configure() {
+    bind(Configuration.class).toInstance(senseiConf);
     senseiNode = new SenseiNode();
   }
   

@@ -65,15 +65,28 @@ public class SenseiMultiModule extends AbstractModule {
   }
   
   public static void main(String[] args) throws Exception{
-    String node1ConfPath = "/Users/jwang/github/sensei/example/cars/conf/sensei.properties";
+
+    String node1ConfPath = "/Users/johnwang/github/sensei/example/cars/conf/sensei.properties";
+    String node2ConfPath = "/Users/johnwang/github/sensei/example/cars/conf2/sensei.properties";
     
-    List<Configuration> confDirs = Arrays.asList(new Configuration[]{new PropertiesConfiguration(node1ConfPath)});
+    PropertiesConfiguration conf1 = new PropertiesConfiguration(node1ConfPath);
+    conf1.setDelimiterParsingDisabled(true);
+    PropertiesConfiguration conf2 = new PropertiesConfiguration(node2ConfPath);
+    conf2.setDelimiterParsingDisabled(true);
+    
+    List<Configuration> confDirs = Arrays.asList(new Configuration[]{conf1, conf2});
     
     SenseiMultiModule senseiMultiModule = new SenseiMultiModule(confDirs);
     Injector injector = Guice.createInjector(senseiMultiModule);
     
     Provider<SenseiNode> senseiNodeProvider = injector.getProvider(senseiMultiModule.getKeys().get(0));
     SenseiNode node = senseiNodeProvider.get();
+    
+    Provider<SenseiNode> senseiNodeProvider2 = injector.getProvider(senseiMultiModule.getKeys().get(1));
+    SenseiNode node2 = senseiNodeProvider2.get();
+    
+    node.start();
+    node2.start();
   }
 
 }

@@ -129,12 +129,14 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
 
   public static Map<String, String[]> extractFacetInfo(SenseiSystemInfo sysInfo) {
     Map<String, String[]> facetInfoMap = new HashMap<String, String[]>();
-    Iterator<SenseiSystemInfo.SenseiFacetInfo> itr = sysInfo.getFacetInfos().iterator();
-    while (itr.hasNext())
-    {
-      SenseiSystemInfo.SenseiFacetInfo facetInfo = itr.next();
-      Map<String, String> props = facetInfo.getProps();
-      facetInfoMap.put(facetInfo.getName(), new String[]{props.get("type"), props.get("column_type")});
+    if (sysInfo !=null && sysInfo.getFacetInfos() != null){
+      Iterator<SenseiSystemInfo.SenseiFacetInfo> itr = sysInfo.getFacetInfos().iterator();
+      while (itr.hasNext())
+      {
+        SenseiSystemInfo.SenseiFacetInfo facetInfo = itr.next();
+        Map<String, String> props = facetInfo.getProps();
+        facetInfoMap.put(facetInfo.getName(), new String[]{props.get("type"), props.get("column_type")});
+      }
     }
     return facetInfoMap;
   }
