@@ -69,10 +69,13 @@ public class SenseiMultiModule extends AbstractModule {
     String node1ConfPath = "/Users/johnwang/github/sensei/example/cars/conf/sensei.properties";
     String node2ConfPath = "/Users/johnwang/github/sensei/example/cars/conf2/sensei.properties";
     
-    PropertiesConfiguration conf1 = new PropertiesConfiguration(node1ConfPath);
+    PropertiesConfiguration conf1 = new PropertiesConfiguration();
     conf1.setDelimiterParsingDisabled(true);
-    PropertiesConfiguration conf2 = new PropertiesConfiguration(node2ConfPath);
+    conf1.load(node1ConfPath);
+    
+    PropertiesConfiguration conf2 = new PropertiesConfiguration();
     conf2.setDelimiterParsingDisabled(true);
+    conf2.load(node2ConfPath);
     
     List<Configuration> confDirs = Arrays.asList(new Configuration[]{conf1, conf2});
     

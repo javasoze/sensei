@@ -61,15 +61,8 @@ public class SpringSenseiPluginFactory implements SenseiPluginFactory<List<?>>{
   private List<Class> getClasses(String classesToReturn) throws ClassNotFoundException {
     List<String> classesStr = new ArrayList<String>();
     if (classesToReturn.contains(",")) {
-      for (String cls : classesToReturn.split(",")) {
-        cls = cls.trim();
-        if (cls.startsWith("[")){
-          cls = cls.substring(1);
-        }
-        if (cls.endsWith("]")){
-          cls = cls.substring(0, cls.length()-1);
-        }
-        classesStr.add(cls);
+      for (String cls : classesToReturn.split(",")) {        
+        classesStr.add(cls.trim());
       }
     } else {
       classesStr.add(classesToReturn.trim());
