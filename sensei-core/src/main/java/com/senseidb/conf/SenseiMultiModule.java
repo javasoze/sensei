@@ -1,5 +1,6 @@
 package com.senseidb.conf;
 
+import java.io.File;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -19,10 +20,10 @@ import com.google.inject.name.Names;
 
 public class SenseiMultiModule extends AbstractModule {
 
-  private final List<Configuration> confDirs;
+  private final List<SenseiConfiguration> confDirs;
   private final List<Key<SenseiNode>> keys;
   
-  public SenseiMultiModule(List<Configuration> confDirs){
+  public SenseiMultiModule(List<SenseiConfiguration> confDirs){
     this.confDirs = confDirs;
     this.keys = new LinkedList<Key<SenseiNode>>();
   }
@@ -31,16 +32,16 @@ public class SenseiMultiModule extends AbstractModule {
     return keys;
   }
   
-  private Key<SenseiNode> configureNode(final Configuration conf,int count){
+  private Key<SenseiNode> configureNode(final SenseiConfiguration conf,int count){
     final Key<SenseiNode> keyToExpose = Key.get(SenseiNode.class, Names.named(conf.toString()+"-"+count));
     keys.add(keyToExpose);
     install(new PrivateModule() {
       @Override public void configure() {
 
-        // Your private bindings go here, including the binding for MyInterface.
-        // You can install other modules here as well!
+        // private bindings go here
+        // install other modules here as well!
 
-        SenseiModule senseiModule = new SenseiModule(conf,keyToExpose);
+        SenseiModule senseiModule = new SenseiModule(conf);
         install(senseiModule);
 
         // expose the MyInterface binding with the unique key
@@ -56,7 +57,7 @@ public class SenseiMultiModule extends AbstractModule {
   protected void configure() {
 
     int count = 0;
-    for (Configuration confDir : confDirs){
+    for (SenseiConfiguration confDir : confDirs){
       Key<SenseiNode> keyToExpose = configureNode(confDir, count++);
 
       // add the exposed unique key to the multibinding
@@ -66,18 +67,15 @@ public class SenseiMultiModule extends AbstractModule {
   
   public static void main(String[] args) throws Exception{
 
-    String node1ConfPath = "/Users/johnwang/github/sensei/example/cars/conf/sensei.properties";
-    String node2ConfPath = "/Users/johnwang/github/sensei/example/cars/conf2/sensei.properties";
+    File node1ConfPath = new File("/Users/johnwang/github/sensei/example/cars/conf");
+    File node2ConfPath = new File("/Users/johnwang/github/sensei/example/cars/conf2");
     
-    PropertiesConfiguration conf1 = new PropertiesConfiguration();
-    conf1.setDelimiterParsingDisabled(true);
-    conf1.load(node1ConfPath);
+    SenseiConfiguration conf1 = new SenseiConfiguration(node1ConfPath);
     
-    PropertiesConfiguration conf2 = new PropertiesConfiguration();
-    conf2.setDelimiterParsingDisabled(true);
-    conf2.load(node2ConfPath);
     
-    List<Configuration> confDirs = Arrays.asList(new Configuration[]{conf1, conf2});
+    SenseiConfiguration conf2 = new SenseiConfiguration(node2ConfPath);
+    
+    List<SenseiConfiguration> confDirs = Arrays.asList(new SenseiConfiguration[]{conf1, conf2});
     
     SenseiMultiModule senseiMultiModule = new SenseiMultiModule(confDirs);
     Injector injector = Guice.createInjector(senseiMultiModule);

@@ -1,8 +1,5 @@
 package com.senseidb.conf;
 
-import java.util.Iterator;
-import java.util.Map;
-
 import org.apache.commons.configuration.Configuration;
 import org.apache.log4j.Logger;
 import org.jolokia.http.AgentServlet;
@@ -14,7 +11,6 @@ import org.mortbay.servlet.GzipFilter;
 import org.mortbay.thread.QueuedThreadPool;
 
 import com.google.inject.AbstractModule;
-import com.google.inject.Key;
 import com.google.inject.Provider;
 import com.google.inject.Provides;
 import com.linkedin.norbert.javacompat.cluster.ClusterClient;
@@ -26,8 +22,6 @@ import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
 import com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory;
 import com.senseidb.gateway.SenseiGateway;
 import com.senseidb.plugin.SenseiPluginRegistry;
-import com.senseidb.search.relevance.CustomRelevanceFunction.CustomRelevanceFunctionFactory;
-import com.senseidb.search.relevance.ModelStorage;
 import com.senseidb.servlet.DefaultSenseiJSONServlet;
 import com.senseidb.servlet.SenseiConfigServletContextListener;
 import com.senseidb.servlet.SenseiHttpInvokerServiceServlet;
@@ -37,45 +31,39 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams,Pro
   private static Logger logger = Logger.getLogger(SenseiModule.class);
   static final String SENSEI_CONTEXT_PATH = "sensei";
   
-  private final Configuration senseiConf;
-  private final Key<SenseiNode> exposedKey;
-  private SenseiPluginRegistry pluginRegistry;
-  private final SenseiGateway gateway;
+  private final SenseiConfiguration conf;
+  
   private SenseiNode senseiNode;
   
-  public SenseiModule(Configuration confDir, Key<SenseiNode> exposedKey){
-    this.senseiConf = confDir;
-    this.exposedKey = exposedKey;
-    pluginRegistry = SenseiPluginRegistry.build(senseiConf);
-    pluginRegistry.start();
-    
-    processRelevanceFunctionPlugins(pluginRegistry);
-
-    gateway = pluginRegistry.getBeanByFullPrefix(SENSEI_GATEWAY, SenseiGateway.class);
-  }
-  
-  private void processRelevanceFunctionPlugins(SenseiPluginRegistry pluginRegistry)
-  {
-    Map<String, CustomRelevanceFunctionFactory> map = pluginRegistry.getNamedBeansByType(CustomRelevanceFunctionFactory.class);
-    Iterator<String> it = map.keySet().iterator();
-    while(it.hasNext())
-    {
-      String name = it.next();
-      CustomRelevanceFunctionFactory crf = map.get(name);
-      ModelStorage.injectPreloadedModel(name, crf);
-    }
-    
+  public SenseiModule(SenseiConfiguration conf){
+    this.conf = conf;
   }
   
   @Override
   protected void configure() {
-    bind(Configuration.class).toInstance(senseiConf);
+    bind(SenseiConfiguration.class).toInstance(conf);
+    install(conf);
     senseiNode = new SenseiNode();
   }
   
+  @Provides 
+  public SenseiGateway provideSenseiGateway() throws Exception{
+    return conf.pluginRegistry.getBeanByFullPrefix(SENSEI_GATEWAY, SenseiGateway.class);
+  }
+  
+  static{
+    try{
+      org.mortbay.log.Log.setLog(new org.mortbay.log.Slf4jLog());
+    }
+    catch(Throwable t){
+      logger.error(t.getMessage(),t);
+    }
+  }
 
   @Provides
-  public Server buildHttpRestServer() throws Exception{
+  public Server buildHttpRestServer(SenseiGateway gateway) throws Exception{
+    Configuration senseiConf = conf.senseiConf;
+    SenseiPluginRegistry pluginRegistry = conf.pluginRegistry;
     int port = senseiConf.getInt(SERVER_BROKER_PORT);
 
     String webappPath = senseiConf.getString(SERVER_BROKER_WEBAPP_PATH,"sensei-core/src/main/webapp");
@@ -139,22 +127,19 @@ public class SenseiModule extends AbstractModule implements SenseiConfParams,Pro
   @Provides
   public ClusterClient buildClusterClient()
   {
+    Configuration senseiConf = conf.senseiConf;
     String clusterName = senseiConf.getString(SENSEI_CLUSTER_NAME);
     String clusterClientName = senseiConf.getString(SENSEI_CLUSTER_CLIENT_NAME,clusterName);
     String zkUrl = senseiConf.getString(SENSEI_CLUSTER_URL);
     int zkTimeout = senseiConf.getInt(SENSEI_CLUSTER_TIMEOUT, 300000);
     ClusterClient clusterClient =  new ZooKeeperClusterClient(clusterClientName, clusterName, zkUrl, zkTimeout);
-
-    logger.info("Connecting to cluster: "+clusterName+" ...");
-    clusterClient.awaitConnectionUninterruptibly();
-
-    logger.info("Cluster: "+clusterName+" successfully connected ");
-
+    logger.info("cluster client: "+clusterName+" constructed");
     return clusterClient;
   }
 
   @Provides
   private NetworkServer buildNetworkServer(ClusterClient clusterClient){
+    Configuration senseiConf = conf.senseiConf;
     NetworkServerConfig networkConfig = new NetworkServerConfig();
     networkConfig.setClusterClient(clusterClient);
 
