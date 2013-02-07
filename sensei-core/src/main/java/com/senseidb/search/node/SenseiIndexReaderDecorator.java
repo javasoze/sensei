@@ -4,6 +4,11 @@ import java.io.IOException;
 import java.util.List;
 
 import org.apache.log4j.Logger;
+import org.apache.lucene.index.Term;
+import org.apache.lucene.index.TermEnum;
+import org.apache.lucene.index.TermPositions;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.RAMDirectory;
 
 import proj.zoie.api.ZoieIndexReader;
 import proj.zoie.impl.indexing.AbstractIndexReaderDecorator;
@@ -39,7 +44,49 @@ public class SenseiIndexReaderDecorator extends AbstractIndexReaderDecorator<Bob
 	public BoboIndexReader decorate(ZoieIndexReader<BoboIndexReader> zoieReader) throws IOException {
 		BoboIndexReader boboReader = null;
         if (zoieReader != null){
+          
           boboReader = BoboIndexReader.getInstanceAsSubReader(zoieReader,_facetHandlers, _facetHandlerFactories);
+          
+
+          Directory dir = zoieReader.directory();
+          if (!(dir instanceof RAMDirectory)){
+            // index warming
+            logger.info("warming new index reader");
+            long start = System.currentTimeMillis();
+            TermEnum te = null;
+            
+            try{
+              te = zoieReader.terms();
+              while (te.next()){
+                Term t = te.term();
+                TermPositions tp = null;
+                try{
+                  tp = zoieReader.termPositions(t);
+                  while (tp.next()){
+                    int f = tp.freq();
+                    for (int i=0;i<f;++i){
+                      tp.nextPosition();
+                    }
+                  }
+                }
+                finally{
+                  if (tp != null){
+                    tp.close();
+                  }
+                }
+                
+              }
+            }
+            finally{
+              if (te != null){
+                te.close();
+              }
+            }
+  
+            long end = System.currentTimeMillis();
+            
+            logger.info("finish warming index reader, took: "+((end-start)/1000)+"s");
+          }
         }
         return boboReader;
 	}
