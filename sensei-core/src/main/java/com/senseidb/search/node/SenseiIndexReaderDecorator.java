@@ -1,6 +1,7 @@
 package com.senseidb.search.node;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.log4j.Logger;
@@ -50,6 +51,11 @@ public class SenseiIndexReaderDecorator extends AbstractIndexReaderDecorator<Bob
 
           Directory dir = zoieReader.directory();
           if (!(dir instanceof RAMDirectory)){
+            
+            HashSet<String> facetFields = new HashSet<String>();
+            for (FacetHandler<?> fh : _facetHandlers){
+              facetFields.add(fh.getName());
+            }
             // index warming
             logger.info("warming new index reader");
             long start = System.currentTimeMillis();
@@ -59,6 +65,11 @@ public class SenseiIndexReaderDecorator extends AbstractIndexReaderDecorator<Bob
               te = zoieReader.terms();
               while (te.next()){
                 Term t = te.term();
+                
+                // we only warm the non-facet fields
+                if (facetFields.contains(t.field())){
+                  continue;
+                }
                 TermPositions tp = null;
                 try{
                   tp = zoieReader.termPositions(t);
