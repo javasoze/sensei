@@ -170,6 +170,10 @@
 	</dependencies>
 	
 	<repositories>
+		<repository>
+		   <id>twitter</id>
+		   <url>http://maven.twttr.com</url>
+		</repository>
 	    <repository>
 	      <id>repository.jboss.org</id>
 	      <url>http://repository.jboss.org/nexus/content/groups/public/</url>

@@ -22,8 +22,8 @@
 				<artifactId>maven-compiler-plugin</artifactId>
 				<version>2.1</version>
 				<configuration>
-					<source>1.6</source>
-					<target>1.6</target>
+					<source>1.7</source>
+					<target>1.7</target>
 					<encoding>UTF-8</encoding>
 				</configuration>
 			</plugin>
@@ -240,17 +240,38 @@
 			<artifactId>fastjson</artifactId>
 			<version>1.1.24</version>
 		</dependency>
-
+		
 		<dependency>
-			<groupId>com.linkedin</groupId>
-			<artifactId>norbert_2.8.1</artifactId>
-			<version>0.6.16-SNAPSHOT</version>
+			<groupId>com.senseidb.zu</groupId>
+			<artifactId>zu-core</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
+		
+		<dependency>
+		   <groupId>com.twitter</groupId>
+		   <artifactId>finagle-core</artifactId>
+		   <version>6.1.1</version>
+		</dependency>
+		<dependency>
+		  <groupId>com.twitter</groupId>
+		  <artifactId>finagle-http</artifactId>
+		  <version>6.1.1</version>
+	    </dependency>
+		<dependency>
+		   <groupId>com.twitter</groupId>
+		   <artifactId>finagle-thrift</artifactId>
+		   <version>6.1.1</version>
+		 </dependency>
 
 		<dependency>
 			<groupId>com.yammer.metrics</groupId>
 			<artifactId>metrics-core</artifactId>
 			<version>2.0.0-RC0</version>
+		</dependency>
+			<dependency>
+		<groupId>com.linkedin</groupId>
+		<artifactId>norbert_2.8.1</artifactId>
+		<version>0.6.16-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
@@ -263,21 +284,6 @@
 			<groupId>org.mortbay.jetty</groupId>
 			<artifactId>jetty</artifactId>
 			<version>6.1.26</version>
-		</dependency>
-		<dependency>
-			<groupId>org.apache.zookeeper</groupId>
-			<artifactId>zookeeper</artifactId>
-			<version>3.3.3</version>
-			<exclusions>
-				<exclusion>  <!-- declare the exclusion here -->
-					<groupId>com.sun.jdmk</groupId>
-					<artifactId>jmxtools</artifactId>
-				</exclusion>
-				<exclusion>  <!-- declare the exclusion here -->
-					<groupId>com.sun.jmx</groupId>
-					<artifactId>jmxri</artifactId>
-				</exclusion>
-			</exclusions>
 		</dependency>
 		<dependency>
 			<groupId>org.antlr</groupId>
