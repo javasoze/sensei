@@ -7,10 +7,10 @@
 	
 	<import resource="zoie.spring" />
 
-	<bean id="cluster-client" class="com.linkedin.norbert.javacompat.cluster.ZooKeeperClusterClient" init-method="awaitConnectionUninterruptibly">
-	  <constructor-arg value="test-client" />
-		<constructor-arg value="testCluster" />
-	  <constructor-arg value="localhost:2181" />
+	<bean id="cluster-client" class="zu.core.cluster.ZuCluster">
+	  <constructor-arg value="localhost" />
+	  <constructor-arg value="2181" />
+	  <constructor-arg value="testCluster" />
 	  <constructor-arg value="30000" />
 	</bean>
 
@@ -33,45 +33,6 @@
     
     <bean id="indexing-manager" class="com.senseidb.search.node.impl.NoopIndexingManager"/>
     
-    <bean id="network-server-config" class="com.linkedin.norbert.javacompat.network.NetworkServerConfig">
-        <property name="serviceName" value="testCluster"/>
-        <property name="requestThreadCorePoolSize" value="5"/>
-        <property name="requestThreadMaxPoolSize" value="10"/>
-        <property name="requestThreadKeepAliveTimeSecs" value="300"/>
-        <property name="clusterClient" ref="cluster-client"/>
-    </bean>
-     
-    <bean id="network-server-1" class="com.linkedin.norbert.javacompat.network.NettyNetworkServer">
-        <constructor-arg ref="network-server-config"/>
-    </bean>
-    
-    <bean id="network-server-2" class="com.linkedin.norbert.javacompat.network.NettyNetworkServer">
-        <constructor-arg ref="network-server-config"/>
-    </bean>
-
-	<bean id="network-client-config" class="com.linkedin.norbert.javacompat.network.NetworkClientConfig">
-       <property name="serviceName" value="testCluster"/>
-       <property name="zooKeeperConnectString" value="localhost:2181" />
-       <property name="zooKeeperSessionTimeoutMillis" value="30000" />
-       <property name="connectTimeoutMillis" value="1000"/>
-       <property name="writeTimeoutMillis" value="150"/>
-       <property name="maxConnectionsPerNode" value="5"/>
-       <property name="staleRequestTimeoutMins" value="10"/>
-       <property name="staleRequestCleanupFrequencyMins" value="10"/>
-       <property name="clusterClient" ref="cluster-client" />
-    </bean>	
-    
     <bean id="request-rewriter" class="com.senseidb.search.node.impl.NoopRequestScatterRewriter" />
     
-    <!--<bean id="router-factory" class="com.senseidb.cluster.routing.UniformPartitionedRoutingFactory" />-->
-
-    <bean id="loadBalancerFactory" class="com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory">
-      <constructor-arg value="50"/>
-    </bean>
-    
-    <bean id="network-client" class="com.senseidb.cluster.client.SenseiNetworkClient">
-        <constructor-arg ref="network-client-config" />
-        <constructor-arg ref="loadBalancerFactory"/>
-    </bean>
-      
 </beans>

@@ -1,52 +1,38 @@
 package com.senseidb.search.node;
 
-import com.linkedin.norbert.javacompat.network.RequestBuilder;
-import com.linkedin.norbert.network.ResponseIterator;
-import com.linkedin.norbert.network.common.TimeoutIterator;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
-
-import java.util.ArrayList;
-import java.util.Collections;
+import java.net.InetSocketAddress;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 
-import com.linkedin.norbert.NorbertException;
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.cluster.Node;
-import com.linkedin.norbert.javacompat.network.PartitionedNetworkClient;
-import com.senseidb.cluster.routing.RoutingInfo;
+import zu.core.cluster.ZuCluster;
+import zu.core.cluster.ZuClusterEventListener;
+
 import com.senseidb.search.req.SenseiRequest;
 import com.senseidb.search.req.SenseiSystemInfo;
 import com.senseidb.svc.impl.SysSenseiCoreServiceImpl;
+import com.twitter.finagle.Service;
 
-public class SenseiSysBroker extends AbstractConsistentHashBroker<SenseiRequest, SenseiSystemInfo>
+public class SenseiSysBroker extends AbstractConsistentHashBroker<SenseiRequest, SenseiSystemInfo> implements ZuClusterEventListener
 {
   private final static Logger logger = Logger.getLogger(SenseiSysBroker.class);
   private final static long TIMEOUT_MILLIS = 8000L;
   private long _timeoutMillis = TIMEOUT_MILLIS;
   private final Comparator<String> _versionComparator;
   private final boolean allowPartialMerge;
+	private Map<InetSocketAddress, Service<SenseiRequest, SenseiSystemInfo>> _nodeAddressToService;
 
-  protected Set<Node> _nodes = Collections.EMPTY_SET;
-
-  public SenseiSysBroker(PartitionedNetworkClient<String> networkClient, ClusterClient clusterClient, Comparator<String> versionComparator, boolean allowPartialMerge) throws NorbertException
+  public SenseiSysBroker(ZuCluster clusterClient, Comparator<String> versionComparator, boolean allowPartialMerge)
   {
-    super(networkClient, SysSenseiCoreServiceImpl.JAVA_SERIALIZER);
+    super(clusterClient, SysSenseiCoreServiceImpl.JAVA_SERIALIZER);
     _versionComparator = versionComparator;
     this.allowPartialMerge = allowPartialMerge;
-    clusterClient.addListener(this);
-    logger.info("created broker instance " + networkClient + " " + clusterClient);
+    clusterClient.addClusterEventListener(this);
   }
 
   @Override
@@ -77,73 +63,48 @@ public class SenseiSysBroker extends AbstractConsistentHashBroker<SenseiRequest,
     return result;
   }
 
+	@Override
+	protected List<SenseiSystemInfo> doCall(final SenseiRequest req) throws ExecutionException {
 
-  @Override
-  protected List<SenseiSystemInfo> doCall(final SenseiRequest req) throws ExecutionException {
-    final List<SenseiSystemInfo> resultList = new ArrayList<SenseiSystemInfo>();
-    List<Future<SenseiSystemInfo>> futures = new ArrayList<Future<SenseiSystemInfo>>(_nodes.size());
-    for(Node n : _nodes)
-    {
-      futures.add(_networkClient.sendRequestToNode(req, n, _serializer));
-    }
-    for(Future<SenseiSystemInfo> future : futures)
-    {
-      try
-      {
-        resultList.add(future.get(2000L, TimeUnit.MILLISECONDS));
-      }
-      catch(Exception e)
-      {
-        logger.error("Failed to get the sysinfo", e);
-      }
-    }
+		Map<Service<SenseiRequest, SenseiSystemInfo>, SenseiRequest> serviceToRequest = new HashMap<Service<SenseiRequest, SenseiSystemInfo>, SenseiRequest>();
+		for (Service<SenseiRequest, SenseiSystemInfo> service : _nodeAddressToService.values()) {
+			serviceToRequest.put(service, req);
+		}
 
-    logger.debug(String.format("There are %d responses", resultList.size()));
+		return executeRequestsInParallel(serviceToRequest, _timeoutMillis);
+	}
 
-    return resultList;
-
-  }
-
-  @Override
+	@Override
   public SenseiSystemInfo getEmptyResultInstance()
   {
     return new SenseiSystemInfo();
-  }
-
-  
-
-  public void handleClusterConnected(Set<Node> nodes)
-  {
-    _partitions = getPartitions(nodes);
-    _nodes = nodes;
-    logger.info("handleClusterConnected(): Received the list of nodes from norbert " + nodes.toString());
-    logger.info("handleClusterConnected(): Received the list of partitions from router " + _partitions.toString());
-  }
-
-  public void handleClusterDisconnected()
-  {
-    logger.info("handleClusterDisconnected() called");
-    _partitions = new IntOpenHashSet();
-    _nodes = Collections.EMPTY_SET;
-  }
-
-  public void handleClusterNodesChanged(Set<Node> nodes)
-  {
-    _partitions = getPartitions(nodes);
-    _nodes = nodes;
-    logger.info("handleClusterNodesChanged(): Received the list of nodes from norbert " + nodes.toString());
-    logger.info("handleClusterNodesChanged(): Received the list of partitions from router " + _partitions.toString());
-  }
-
-  @Override
-  public void handleClusterShutdown()
-  {
-    logger.info("handleClusterShutdown() called");
   }
 
   @Override
   public boolean allowPartialMerge() {
     return allowPartialMerge;
   }
+  
+	@Override
+	protected String getMessageType() {
+		return SysSenseiCoreServiceImpl.MESSAGE_TYPE_NAME;
+	}
+
+	@Override
+	public void clusterChanged(Map<Integer, List<InetSocketAddress>> clusterView) {
+		logger.info("clusterChanged(): Received new clusterView from zu " + clusterView);
+		Set<InetSocketAddress> nodes = getNodesAddresses(clusterView);
+		Map<InetSocketAddress, Service<SenseiRequest, SenseiSystemInfo>> addressToService = new HashMap<InetSocketAddress, Service<SenseiRequest, SenseiSystemInfo>>();
+		for (InetSocketAddress nodeAddress : nodes) {
+			Service<SenseiRequest, SenseiSystemInfo> service = serviceDecorator.decorate(nodeAddress);
+			addressToService.put(nodeAddress, service);
+		}
+		_nodeAddressToService = addressToService;
+	}
+
+	@Override
+	public void nodesRemoved(Set<InetSocketAddress> removedNodes) {
+	}
+
 }
 

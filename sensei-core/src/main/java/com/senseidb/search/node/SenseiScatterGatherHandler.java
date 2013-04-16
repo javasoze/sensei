@@ -8,7 +8,6 @@ import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
 import com.browseengine.bobo.api.FacetSpec;
-import com.linkedin.norbert.javacompat.cluster.Node;
 import org.apache.log4j.Logger;
 import org.apache.lucene.document.Document;
 
@@ -91,7 +90,7 @@ public class SenseiScatterGatherHandler extends AbstractSenseiScatterGatherHandl
   }
 
   @Override
-  public SenseiRequest customizeRequest(SenseiRequest senseiReq, Node node, Set<Integer> partitions)
+  public SenseiRequest customizeRequest(SenseiRequest senseiReq,  Set<Integer> partitions)
   {
     // Rewrite facet max count.
     Map<String, FacetSpec> facetSpecs = senseiReq.getFacetSpecs();
@@ -107,7 +106,7 @@ public class SenseiScatterGatherHandler extends AbstractSenseiScatterGatherHandl
     int oldCount = senseiReq.getCount();
     if (_reqRewriter != null)
     {
-      senseiReq = _reqRewriter.rewrite(senseiReq, node, partitions);
+      senseiReq = _reqRewriter.rewrite(senseiReq,  partitions);
     }
 
     // customize only if user wants hits

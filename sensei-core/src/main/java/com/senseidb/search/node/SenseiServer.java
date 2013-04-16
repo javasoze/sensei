@@ -6,6 +6,7 @@ import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import javax.management.StandardMBean;
 
@@ -13,22 +14,24 @@ import org.apache.log4j.Logger;
 import org.mortbay.jetty.Server;
 
 import proj.zoie.api.DataProvider;
+import zu.core.cluster.ZuCluster;
+import zu.finagle.server.ZuFinagleServer;
+import zu.finagle.server.ZuTransportService;
 
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.cluster.Node;
-import com.linkedin.norbert.javacompat.network.NetworkServer;
-import com.linkedin.norbert.network.NetworkingException;
 import com.senseidb.conf.SenseiServerBuilder;
 import com.senseidb.jmx.JmxUtil;
 import com.senseidb.plugin.SenseiPluginRegistry;
 import com.senseidb.search.req.AbstractSenseiRequest;
 import com.senseidb.search.req.AbstractSenseiResult;
-import com.senseidb.search.req.mapred.impl.DefaultFieldAccessorFactory;
+import com.senseidb.search.req.SenseiRequest;
+import com.senseidb.search.req.SenseiResult;
+import com.senseidb.search.req.SenseiSystemInfo;
 import com.senseidb.svc.impl.AbstractSenseiCoreService;
 import com.senseidb.svc.impl.CoreSenseiServiceImpl;
 import com.senseidb.svc.impl.SenseiCoreServiceMessageHandler;
 import com.senseidb.svc.impl.SysSenseiCoreServiceImpl;
 import com.senseidb.util.NetUtil;
+import com.twitter.common.zookeeper.ServerSet.UpdateException;
 
 
 public class SenseiServer {
@@ -41,10 +44,7 @@ public class SenseiServer {
   private int _id;
   private int _port;
   private int[] _partitions;
-  private NetworkServer _networkServer;
-  private ClusterClient _clusterClient;
   private final SenseiCore _core;
-  protected volatile Node _serverNode;
   private final CoreSenseiServiceImpl _innerSvc;
   private final List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> _externalSvc;
 
@@ -54,37 +54,27 @@ public class SenseiServer {
 
   private final SenseiPluginRegistry pluginRegistry;
 
-  public SenseiServer(int id, int port, int[] partitions,
-                      NetworkServer networkServer,
-                      ClusterClient clusterClient,
-                      SenseiZoieFactory<?> zoieSystemFactory,
-                      SenseiIndexingManager indexingManager,
-                      SenseiQueryBuilderFactory queryBuilderFactory,
-                      List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> externalSvc, SenseiPluginRegistry pluginRegistry)
-  {
-    this(port,networkServer,clusterClient,new SenseiCore(id, partitions,zoieSystemFactory, indexingManager, queryBuilderFactory, new DefaultFieldAccessorFactory(), zoieSystemFactory.getDecorator()),externalSvc, pluginRegistry);
-  }
+	private ZuTransportService transportService;
+	private ZuFinagleServer server;
+	private ZuCluster cluster;
 
-  public SenseiServer(int port,
-                      NetworkServer networkServer,
-                      ClusterClient clusterClient,
-                      SenseiCore senseiCore,
-                      List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> externalSvc, SenseiPluginRegistry pluginRegistry)
-  {
-    _core = senseiCore;
-    this.pluginRegistry = pluginRegistry;
-    _id = senseiCore.getNodeId();
-    _port = port;
-    _partitions = senseiCore.getPartitions();
+	public SenseiServer(int port, SenseiCore senseiCore,
+			List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> externalSvc,
+			SenseiPluginRegistry pluginRegistry, ZuTransportService transport, ZuFinagleServer server, ZuCluster cluster) {
+		_core = senseiCore;
+		this.pluginRegistry = pluginRegistry;
+		this.transportService = transport;
+		this.server = server;
+		this.cluster = cluster;
+		_id = senseiCore.getNodeId();
+		_port = port;
+		_partitions = senseiCore.getPartitions();
 
-    _networkServer = networkServer;
-    _clusterClient = clusterClient;
+		_innerSvc = new CoreSenseiServiceImpl(senseiCore);
+		_externalSvc = externalSvc;
+	}
 
-    _innerSvc = new CoreSenseiServiceImpl(senseiCore);
-    _externalSvc = externalSvc;
-  }
-
-  private static String help(){
+private static String help(){
     StringBuffer buffer = new StringBuffer();
     buffer.append("Usage: <conf.dir> [availability]\n");
     buffer.append("====================================\n");
@@ -136,19 +126,13 @@ public class SenseiServer {
       {        
         _core.shutdown();
         pluginRegistry.stop();
-        _clusterClient.removeNode(_id);
-        _clusterClient.shutdown();
-        _serverNode = null;
+        server.leaveCluster(cluster);
+        server.shutdown();
+        cluster.shutdown();
         _core.getPluggableSearchEngineManager().close();
       } catch (Exception e)
       {
         logger.warn(e.getMessage());
-      } finally
-      {
-        if (_networkServer != null)
-        {
-          _networkServer.shutdown();
-        }
       }
     } catch (Exception e) {
       logger.error(e.getMessage(),e);
@@ -157,120 +141,40 @@ public class SenseiServer {
 
   public void start(boolean available) throws Exception {
     _core.start();
-//        ClusterClient clusterClient = ClusterClientFactory.newInstance().newZookeeperClient();
-    String clusterName = _clusterClient.getServiceName();
+    logger.info("Cluster Id: " + cluster.getClusterId());
 
-    logger.info("Cluster Name: " + clusterName);
-    logger.info("Cluster info: " + _clusterClient.toString());
+		AbstractSenseiCoreService<SenseiRequest, SenseiResult> coreSenseiService = new CoreSenseiServiceImpl(_core);
+		AbstractSenseiCoreService<SenseiRequest, SenseiSystemInfo> sysSenseiCoreService = new SysSenseiCoreServiceImpl(_core);   
+		SenseiCoreServiceMessageHandler<SenseiRequest, SenseiResult> senseiMsgHandler = new SenseiCoreServiceMessageHandler<SenseiRequest, SenseiResult>(
+				coreSenseiService);
+		SenseiCoreServiceMessageHandler<SenseiRequest, SenseiSystemInfo> senseiSysMsgHandler = new SenseiCoreServiceMessageHandler<SenseiRequest, SenseiSystemInfo>(
+				sysSenseiCoreService);
 
-    AbstractSenseiCoreService coreSenseiService = new CoreSenseiServiceImpl(_core);
-    AbstractSenseiCoreService sysSenseiCoreService = new SysSenseiCoreServiceImpl(_core);    
-    // create the zookeeper cluster client
-//    SenseiClusterClientImpl senseiClusterClient = new SenseiClusterClientImpl(clusterName, zookeeperURL, zookeeperTimeout, false);
-    SenseiCoreServiceMessageHandler senseiMsgHandler =  new SenseiCoreServiceMessageHandler(coreSenseiService);
-    SenseiCoreServiceMessageHandler senseiSysMsgHandler =  new SenseiCoreServiceMessageHandler(sysSenseiCoreService);
-   
-    _networkServer.registerHandler(senseiMsgHandler, coreSenseiService.getSerializer());
-    _networkServer.registerHandler(senseiSysMsgHandler, sysSenseiCoreService.getSerializer());
-    
-    _networkServer.registerHandler(senseiMsgHandler, CoreSenseiServiceImpl.JAVA_SERIALIZER);
-    _networkServer.registerHandler(senseiSysMsgHandler, SysSenseiCoreServiceImpl.JAVA_SERIALIZER);
+		transportService.registerHandler(senseiMsgHandler);
+		transportService.registerHandler(senseiSysMsgHandler);
+
+		server.start();
 
     if (_externalSvc!=null){
       for (AbstractSenseiCoreService svc : _externalSvc){
-        _networkServer.registerHandler(new SenseiCoreServiceMessageHandler(svc), svc.getSerializer());
+      	transportService.registerHandler(new SenseiCoreServiceMessageHandler(svc));
       }
     }
-    HashSet<Integer> partition = new HashSet<Integer>();
-    for (int partId : _partitions){
-      partition.add(partId);
-    }
 
-    boolean nodeExists = false;
-    try
-    {
-      logger.info("waiting to connect to cluster...");
-      _clusterClient.awaitConnectionUninterruptibly();
-      _serverNode = _clusterClient.getNodeWithId(_id);
-      nodeExists = (_serverNode != null);
-      if (!nodeExists) {
-        String ipAddr = getLocalIpAddress();
-        logger.info("Node id : " + _id + " IP address : " + ipAddr);
-        _serverNode = _clusterClient.addNode(_id, ipAddr, partition);
-        logger.info("added node id: " + _id);
-      } else
-      {
-        // node exists
-
-      }
-    } catch (Exception e)
-    {
-      logger.error(e.getMessage(), e);
-      throw e;
-    }
-
-    try
-    {
-      logger.info("binding server ...");
-      _networkServer.bind(_id, available);
-
-      // exponential backoff
-      Thread.sleep(1000);
-
-      _available = available;
-      logger.info("started [markAvailable=" + available + "] ...");
-      if (nodeExists)
-      {
-        logger.warn("existing node found, will try to overwrite.");
-        try
-        {
-          // remove node above
-          _clusterClient.removeNode(_id);
-          _serverNode = null;
-        } catch (Exception e)
-        {
-          logger.error("problem removing old node: " + e.getMessage(), e);
-        }
-       
-        String ipAddr = getLocalIpAddress();
-        _serverNode = _clusterClient.addNode(_id, ipAddr, partition);
-        Thread.sleep(1000);
-
-        logger.info("added node id: " + _id);
-      }
-    } catch (NetworkingException e)
-    {
-      logger.error(e.getMessage(), e);
-
-      try
-      {
-        if (!nodeExists)
-        {
-          _clusterClient.removeNode(_id);
-          _serverNode = null;
-        }
-      } catch (Exception ex)
-      {
-        logger.warn(ex.getMessage());
-      } finally
-      {
-        try
-        {
-          _networkServer.shutdown();
-          _networkServer = null;
-
-        } finally
-        {
-          _clusterClient.shutdown();
-          _clusterClient = null;
-        }
-      }
-      throw e;
-    }   
+		setAvailable(available);
+    
     SenseiServerAdminMBean senseiAdminMBean = getAdminMBean();
     StandardMBean bean = new StandardMBean(senseiAdminMBean, SenseiServerAdminMBean.class);
     JmxUtil.registerMBean(bean, "name", "sensei-server-"+_id);
   }
+
+	private Set<Integer> getPartitions() {
+		Set<Integer> shards = new HashSet<Integer>();
+		for (Integer partition : _partitions) {
+			shards.add(partition);
+		}
+		return shards;
+	}
 
 
   private String getLocalIpAddress() throws SocketException,
@@ -317,44 +221,40 @@ public class SenseiServer {
     };
   }
 
-  public void setAvailable(boolean available){
-    if (available)
-    {
-      logger.info("making available node " + _id + " @port:" + _port + " for partitions: " + Arrays.toString(_partitions));
-      _networkServer.markAvailable();
-      try
-      {
-        Thread.sleep(1000);
-      } catch (InterruptedException e)
-      {
-      }
-    } else
-    {
-      logger.info("making unavailable node " + _id + " @port:" + _port + " for partitions: " + Arrays.toString(_partitions));
-      _networkServer.markUnavailable();
-    }
-    _available = available;
-  }
+	public void setAvailable(boolean available) {
+		String ipAddr;
+		try {
+			ipAddr = getLocalIpAddress();
+		} catch (Exception e) {
+			logger.warn("cannot get local IP address", e);
+			ipAddr = "unknown";
+		}
 
-  public boolean isAvailable()
-  {
-    if (_serverNode != null && _serverNode.isAvailable() == _available)
-      return _available;
+		if (available) {
+			try {
+				logger.info("making available node " + _id + " @port:" + _port + " IP address : " + ipAddr
+						+ " for partitions: " + Arrays.toString(_partitions));
+				server.joinCluster(cluster, getPartitions());
+				_available = true;
+			} catch (Exception e) {
+				logger.error("error joining cluster", e);
+			}
+		} else {
+			logger.info("making unavailable node " + _id + " @port:" + _port + " IP address : " + ipAddr
+					+ " for partitions: " + Arrays.toString(_partitions));
+			try {
+				server.leaveCluster(cluster);
+				_available = false;
+			} catch (UpdateException e) {
+				logger.error("error leaving cluster", e);
+			}
+		}
+	}
 
-    try
-    {
-      Thread.sleep(1000);
-      _serverNode = _clusterClient.getNodeWithId(_id);
-      if (_serverNode != null && _serverNode.isAvailable() == _available)
-        return _available;
-    } catch (Exception e)
-    {
-      logger.error(e.getMessage(), e);
-    }
-    _available = (_serverNode != null ? _serverNode.isAvailable() : false);
-
-    return _available;
-  }
+	public boolean isAvailable()
+	{
+		return _available;
+	}
 
   /*private static void loadJars(File extDir)
   {

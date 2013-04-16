@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -17,13 +18,12 @@ import java.util.concurrent.TimeoutException;
 import org.apache.log4j.Logger;
 
 import org.apache.lucene.util.NamedThreadFactory;
-import org.jboss.netty.util.internal.ConcurrentHashMap;
 
 import proj.zoie.api.IndexReaderFactory;
 import proj.zoie.api.ZoieIndexReader;
+import zu.finagle.serialize.ZuSerializer;
 
 import com.browseengine.bobo.api.BoboIndexReader;
-import com.linkedin.norbert.network.Serializer;
 import com.senseidb.metrics.MetricsConstants;
 import com.senseidb.search.node.SenseiCore;
 import com.senseidb.search.node.SenseiQueryBuilderFactory;
@@ -271,5 +271,6 @@ public abstract class AbstractSenseiCoreService<Req extends AbstractSenseiReques
 	public abstract Res mergePartitionedResults(Req r,List<Res> reqList);
 	public abstract Res getEmptyResultInstance(Throwable error);
 
-	public abstract Serializer<Req, Res> getSerializer();
+	public abstract ZuSerializer<Req,Res> getSerializer();
+	public abstract String getMessageTypeName();
 }

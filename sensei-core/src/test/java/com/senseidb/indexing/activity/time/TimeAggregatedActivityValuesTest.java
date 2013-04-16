@@ -1,9 +1,9 @@
 package com.senseidb.indexing.activity.time;
 
 import java.io.File;
+import java.util.Arrays;
 
 import junit.framework.TestCase;
-import scala.actors.threadpool.Arrays;
 
 import com.senseidb.indexing.activity.ActivityPersistenceFactory;
 import com.senseidb.test.SenseiStarter;

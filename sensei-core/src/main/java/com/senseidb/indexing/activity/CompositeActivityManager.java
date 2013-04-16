@@ -10,20 +10,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.log4j.Logger;
 import org.apache.lucene.index.IndexReader;
-import org.apache.lucene.store.Directory;
-import org.jboss.netty.util.internal.ConcurrentHashMap;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import proj.zoie.api.IndexReaderFactory;
-import proj.zoie.api.Zoie;
 import proj.zoie.api.ZoieIndexReader;
-import proj.zoie.api.ZoieMultiReader;
-import proj.zoie.api.ZoieSegmentReader;
-
 import com.browseengine.bobo.api.BoboIndexReader;
 import com.browseengine.bobo.facets.FacetHandler;
 import com.senseidb.conf.SenseiConfParams;
@@ -39,9 +34,6 @@ import com.senseidb.plugin.SenseiPluginRegistry;
 import com.senseidb.search.node.SenseiCore;
 import com.senseidb.search.plugin.PluggableSearchEngine;
 import com.senseidb.search.plugin.PluggableSearchEngineManager;
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Counter;
-import com.yammer.metrics.core.MetricName;
 
 
 /**

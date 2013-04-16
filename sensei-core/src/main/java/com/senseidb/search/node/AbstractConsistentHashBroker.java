@@ -1,40 +1,39 @@
 package com.senseidb.search.node;
 
-import com.linkedin.norbert.javacompat.network.RequestBuilder;
-import com.linkedin.norbert.network.ResponseIterator;
-import com.linkedin.norbert.network.common.ExceptionIterator;
-import com.linkedin.norbert.network.common.PartialIterator;
-import com.linkedin.norbert.network.common.TimeoutIterator;
-import com.senseidb.search.req.SenseiRequest;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
 
+import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang.RandomStringUtils;
-import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 
-import com.linkedin.norbert.NorbertException;
-import com.linkedin.norbert.javacompat.cluster.Node;
-import com.linkedin.norbert.javacompat.network.PartitionedNetworkClient;
-import com.linkedin.norbert.network.Serializer;
-import com.senseidb.cluster.routing.RoutingInfo;
+import zu.core.cluster.ZuCluster;
+import zu.core.cluster.routing.ConsistentHashRoutingAlgorithm;
+import zu.core.cluster.routing.RoutingAlgorithm;
+import zu.finagle.client.ZuFinagleServiceDecorator;
+import zu.finagle.client.ZuTransportClientProxy;
+import zu.finagle.serialize.ZuSerializer;
+
 import com.senseidb.metrics.MetricsConstants;
 import com.senseidb.search.req.AbstractSenseiRequest;
 import com.senseidb.search.req.AbstractSenseiResult;
 import com.senseidb.search.req.ErrorType;
 import com.senseidb.search.req.SenseiError;
+import com.senseidb.search.req.SenseiRequest;
 import com.senseidb.svc.api.SenseiException;
+import com.twitter.finagle.Service;
+import com.twitter.util.Duration;
+import com.twitter.util.Future;
+import com.twitter.util.FutureEventListener;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Meter;
 import com.yammer.metrics.core.MetricName;
@@ -51,8 +50,8 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
 {
   private final static Logger logger = Logger.getLogger(AbstractConsistentHashBroker.class);
 
-  protected long _timeout = 8000;
-  protected final Serializer<REQUEST, RESULT> _serializer;
+	protected long _timeout = 8000;
+  protected final ZuSerializer<REQUEST, RESULT> _serializer;
 
   private static Timer ScatterTimer = null;
   private static Timer GatherTimer = null;
@@ -60,6 +59,12 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
   private static Meter SearchCounter = null;
   private static Meter ErrorMeter = null;
   private static Meter EmptyMeter = null;
+
+
+  protected ZuFinagleServiceDecorator<REQUEST, RESULT> serviceDecorator;
+	private RoutingAlgorithm<Service<REQUEST,RESULT>> router;
+	private ZuCluster clusterClient;
+
   
   static{
 	  // register metrics monitoring for timers
@@ -87,36 +92,26 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
 	  }
   }
   
-  /**
-   * @param networkClient
-   * @param clusterClient
-   * @param routerFactory
+	/**
+	 * @param clusterClient
    * @param serializer
    *          The serializer used to serialize/deserialize request/response pairs
-   * @param scatterGatherHandler
-   * @throws NorbertException
-   */
-  public AbstractConsistentHashBroker(PartitionedNetworkClient<String> networkClient, Serializer<REQUEST, RESULT> serializer)
-      throws NorbertException
-  {
-    super(networkClient);
-    _serializer = serializer;
-  }
-
-	public <T> T customizeRequest(REQUEST request)
-	{
-		return (T) request;
+	 */
+	public AbstractConsistentHashBroker(ZuCluster clusterClient, ZuSerializer<REQUEST, RESULT> serializer) {
+		super();
+		this.clusterClient = clusterClient;
+		_serializer = serializer;
+		ZuTransportClientProxy<REQUEST, RESULT> proxy = new ZuTransportClientProxy<REQUEST, RESULT>(getMessageType(),
+				_serializer);
+		serviceDecorator = new ZuFinagleServiceDecorator<REQUEST, RESULT>(proxy);
+		router = new ConsistentHashRoutingAlgorithm<Service<REQUEST, RESULT>>(serviceDecorator);
+		clusterClient.addClusterEventListener(router);
 	}
 
-  protected IntSet getPartitions(Set<Node> nodes)
-  {
-	    IntSet partitionSet = new IntOpenHashSet();
-	    for (Node n : nodes)
-	    {
-	      partitionSet.addAll(n.getPartitionIds());
-	    }
-	    return partitionSet;
-	  }
+  
+	public REQUEST customizeRequest(REQUEST request) {
+		return request;
+	}
 
   /**
    * @return an empty result instance. Used when the request cannot be properly
@@ -143,7 +138,7 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
       return TotalTimer.time(new Callable<RESULT>(){
     	@Override
   		public RESULT call() throws Exception {
-          return doBrowse(_networkClient, req, _partitions); 	  
+          return doBrowse(req); 	  
     	}
       });
     } 
@@ -176,7 +171,7 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
     }
   }
 
-  protected RESULT doBrowse(PartitionedNetworkClient<String> networkClient, final REQUEST req, IntSet partitions)
+  protected RESULT doBrowse(final REQUEST req)
   {
     final long time = System.currentTimeMillis();
 
@@ -227,47 +222,40 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
 
     return result;
   }
-
-  protected List<RESULT> doCall(final REQUEST req) throws ExecutionException {
-    List<RESULT> resultList = new ArrayList<RESULT>();
-    ResponseIterator<RESULT> responseIterator =
-        buildIterator(_networkClient.sendRequestToOneReplica(getRouteParam(req), new RequestBuilder<Integer, REQUEST>() {
-          private int count = 0;
-          @Override
-          public REQUEST apply(Node node, Set<Integer> nodePartitions) {
-            // TODO: Cloning is yucky per http://www.artima.com/intv/bloch13.html
-            REQUEST clone = (REQUEST) (((SenseiRequest) req).clone());
-            
-            clone.setPartitions(nodePartitions);
-
-            REQUEST customizedRequest = customizeRequest(clone);
-            return customizedRequest;
-          }
-        }, _serializer));
-
-    while(responseIterator.hasNext()) {
-      resultList.add(responseIterator.next());
-    }
-
-    logger.debug(String.format("There are %d responses", resultList.size()));
-
-    return resultList;
-  }
   
-  protected ResponseIterator<RESULT> buildIterator(ResponseIterator<RESULT> responseIterator) {
-    TimeoutIterator<RESULT> timeoutIterator = new TimeoutIterator<RESULT>(responseIterator, _timeout);
-    if(allowPartialMerge()) {
-      return new PartialIterator<RESULT>(new ExceptionIterator<RESULT>(timeoutIterator));
-    }
-    return timeoutIterator;
-  }
+	protected List<RESULT> doCall(REQUEST req) throws ExecutionException {
+		Set<Integer> shards = router.getShards();
 
+		Map<Service<REQUEST, RESULT>, REQUEST> serviceToRequest = new HashMap<Service<REQUEST, RESULT>, REQUEST>();
+
+		for (Integer shard : shards) {
+			Service<REQUEST, RESULT> service = router.route(getRouteParam(req).getBytes(), shard);
+
+			if (service == null) {
+				logger.warn("router returned null as a destination service");
+				continue;
+			}
+
+			REQUEST requestToNode = serviceToRequest.get(service);
+			if (requestToNode == null) {
+        // TODO: Cloning is yucky per http://www.artima.com/intv/bloch13.htm
+				requestToNode = (REQUEST) (((SenseiRequest) req).clone());
+				requestToNode = customizeRequest(requestToNode);
+				requestToNode.setPartitions(new HashSet<Integer>());
+				serviceToRequest.put(service, requestToNode);
+			}
+			requestToNode.getPartitions().add(shard);
+		}
+
+		return executeRequestsInParallel(serviceToRequest, _timeout);
+	}
+
+	protected abstract String getMessageType();
+  
   public void shutdown()
   {
     logger.info("shutting down broker...");
   }
-
-  
 
   public long getTimeout() {
     return _timeout;
@@ -282,4 +270,36 @@ public abstract class AbstractConsistentHashBroker<REQUEST extends AbstractSense
    * results. It's a tradeoff between fault tolerance and accuracy that may be acceptable for some applications
    */
   public abstract boolean allowPartialMerge();
+
+  protected List<RESULT> executeRequestsInParallel(final Map<Service<REQUEST, RESULT>, REQUEST> serviceToRequest, long timeout) {
+		final List<Future<RESULT>> futures = new ArrayList<Future<RESULT>>();
+		for (Entry<Service<REQUEST, RESULT>, REQUEST> entry : serviceToRequest.entrySet()) {
+			futures.add(entry.getKey().apply(entry.getValue()).addEventListener(new FutureEventListener<RESULT>() {
+	
+				@Override
+				public void onFailure(Throwable t) {
+					logger.error("Failed to get response", t);
+				}
+	
+				@Override
+				public void onSuccess(RESULT result) {
+					// do nothing as we wait for all results below
+				}
+			}));
+		}
+	
+		Future<List<RESULT>> collected = Future.collect(futures);
+		List<RESULT> results = collected.apply(Duration.apply(timeout, TimeUnit.MILLISECONDS));
+		logger.debug(String.format("There are %d responses", results.size()));
+		return results;
+	}
+
+
+	protected static Set<InetSocketAddress> getNodesAddresses(Map<Integer, List<InetSocketAddress>> clusterView) {
+		Set<InetSocketAddress> nodes = new HashSet<InetSocketAddress>();
+		for (List<InetSocketAddress> inetSocketAddressList : clusterView.values()) {
+			nodes.addAll(inetSocketAddressList);
+		}
+		return nodes;
+	}
 }

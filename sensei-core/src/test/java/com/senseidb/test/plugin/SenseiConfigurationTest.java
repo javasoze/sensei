@@ -47,15 +47,6 @@ public class SenseiConfigurationTest extends Assert {
     assertNotNull(analyzer);
   }
   @Test
-  public void test3ConfigParams() {
-    MyCustomRouterFactory customRouterFactory = pluginRegistry.getBeansByType(MyCustomRouterFactory.class).get(0);
-    assertEquals("prop1", customRouterFactory.config.get("property1"));
-    assertEquals("prop2", customRouterFactory.config.get("property2"));
-    assertEquals("3", customRouterFactory.config.get("property3"));
-    assertEquals("", customRouterFactory.config.get("property4"));
-    assertTrue(customRouterFactory.started);
-  }
-  @Test
   public void test4GetBeanList() {
    List<FacetHandler> customFacets = pluginRegistry.resolveBeansByListKey("sensei.custom.facets", FacetHandler.class);
    assertEquals(6, customFacets.size());

@@ -3,7 +3,6 @@
  */
 package com.senseidb.search.node;
 
-import com.linkedin.norbert.javacompat.network.NetworkClientConfig;
 
 /**
  * @author nnarkhed
@@ -133,19 +132,19 @@ public class SenseiNetworkClientConfig
     this._staleRequestCleanupFrequencyMins = staleRequestCleanupFrequencyMins;
   }
   
-  public NetworkClientConfig getNetworkConfigObject()
-  {
-    NetworkClientConfig netConfig = new NetworkClientConfig();
-    
-    netConfig.setServiceName(_serviceName);
-    netConfig.setZooKeeperSessionTimeoutMillis(_zooKeeperSessionTimeoutMillis);
-    netConfig.setZooKeeperConnectString(_zooKeeperURL);
-    netConfig.setConnectTimeoutMillis(_connectTimeoutMillis);
-    netConfig.setMaxConnectionsPerNode(_maxConnectionsPerNode);
-    netConfig.setStaleRequestCleanupFrequencyMins(_staleRequestCleanupFrequencyMins);
-    netConfig.setStaleRequestTimeoutMins(_staleRequestTimeoutMins);
-    netConfig.setWriteTimeoutMillis(_writeTimeoutMillis);
-    
-    return netConfig;
-  }
+//  public NetworkClientConfig getNetworkConfigObject()
+//  {
+//    NetworkClientConfig netConfig = new NetworkClientConfig();
+//    
+//    netConfig.setServiceName(_serviceName);
+//    netConfig.setZooKeeperSessionTimeoutMillis(_zooKeeperSessionTimeoutMillis);
+//    netConfig.setZooKeeperConnectString(_zooKeeperURL);
+//    netConfig.setConnectTimeoutMillis(_connectTimeoutMillis);
+//    netConfig.setMaxConnectionsPerNode(_maxConnectionsPerNode);
+//    netConfig.setStaleRequestCleanupFrequencyMins(_staleRequestCleanupFrequencyMins);
+//    netConfig.setStaleRequestTimeoutMins(_staleRequestTimeoutMins);
+//    netConfig.setWriteTimeoutMillis(_writeTimeoutMillis);
+//    
+//    return netConfig;
+//  }
 }

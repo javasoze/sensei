@@ -30,15 +30,12 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.browseengine.bobo.api.BrowseSelection;
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.network.NetworkClientConfig;
 import com.senseidb.bql.parsers.BQLCompiler;
-import com.senseidb.cluster.client.SenseiNetworkClient;
 import com.senseidb.conf.SenseiConfParams;
 import com.senseidb.conf.SenseiFacetHandlerBuilder;
+import com.senseidb.search.node.AbstractConsistentHashBroker;
 import com.senseidb.search.node.Broker;
 import com.senseidb.search.node.SenseiBroker;
-import com.senseidb.search.node.SenseiSysBroker;
 import com.senseidb.search.node.broker.BrokerConfig;
 import com.senseidb.search.node.broker.LayeredBroker;
 import com.senseidb.search.req.ErrorType;
@@ -51,10 +48,10 @@ import com.senseidb.search.req.SenseiResult;
 import com.senseidb.search.req.SenseiSystemInfo;
 import com.senseidb.svc.api.SenseiException;
 import com.senseidb.svc.impl.HttpRestSenseiServiceImpl;
-import com.senseidb.util.JsonTemplateProcessor;
-import com.senseidb.util.RequestConverter2;
 import com.senseidb.util.JSONUtil.FastJSONArray;
 import com.senseidb.util.JSONUtil.FastJSONObject;
+import com.senseidb.util.JsonTemplateProcessor;
+import com.senseidb.util.RequestConverter2;
 import com.yammer.metrics.Metrics;
 import com.yammer.metrics.core.Counter;
 import com.yammer.metrics.core.MetricName;
@@ -75,12 +72,8 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
       Metrics.newCounter(new MetricName(AbstractSenseiClientServlet.class,
                                         TOTAL_DOCS));
 
-  private final NetworkClientConfig _networkClientConfig = new NetworkClientConfig();
-
-  private ClusterClient _clusterClient = null;
-  private SenseiNetworkClient _networkClient = null;
   private SenseiBroker _senseiBroker = null;
-  private SenseiSysBroker _senseiSysBroker = null;
+  private AbstractConsistentHashBroker<SenseiRequest, SenseiSystemInfo> _senseiSysBroker = null;
   private Map<String, String[]> _facetInfoMap = new HashMap<String, String[]>();
   private BQLCompiler _compiler = null;
   private LayeredBroker federatedBroker;
@@ -89,6 +82,7 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
 
   private Timer _statTimer;
   private RequestPostProcessor postProcessor;
+	private BrokerConfig _brokerConfig;
 
 
   public AbstractSenseiClientServlet() {
@@ -98,20 +92,16 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
   @Override
   public void init(ServletConfig config) throws ServletException {
     super.init(config);
-    BrokerConfig brokerConfig = new BrokerConfig(senseiConf, loadBalancerFactory);
-    brokerConfig.init();
+    _brokerConfig = new BrokerConfig(senseiConf);
+    _brokerConfig.init();
     postProcessor = pluginRegistry.getBeanByFullPrefix(SenseiConfParams.SENSEI_REQUEST_POSTPROCESSOR, RequestPostProcessor.class);
-    _senseiBroker = brokerConfig.buildSenseiBroker();
-    _senseiSysBroker = brokerConfig.buildSysSenseiBroker(versionComparator);
-    _networkClient = brokerConfig.getNetworkClient();
-    _clusterClient = brokerConfig.getClusterClient();
+    _senseiBroker = _brokerConfig.buildSenseiBroker();
+    _senseiSysBroker = _brokerConfig.buildSysSenseiBroker(versionComparator);
     federatedBroker = pluginRegistry.getBeanByFullPrefix(SenseiConfParams.SENSEI_FEDERATED_BROKER, LayeredBroker.class);
     if (federatedBroker != null) { 
       federatedBroker.warmUp();
     }
-    logger.info("Connecting to cluster: " + brokerConfig.getClusterName() +" ...");
-    _clusterClient.awaitConnectionUninterruptibly();
-
+    logger.info("Connecting to cluster: " + _brokerConfig.getClusterName() +" ...");
     int count = 0;
     while (true)
     {
@@ -146,7 +136,6 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
         }
       }
     }
-
     // Start the stat timer to get some of the sys stat:
     _statTimer.scheduleAtFixedRate(new TimerTask()
     {
@@ -192,7 +181,7 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
       }
     }, 60000, 60000); // Every minute.
 
-    logger.info("Cluster: "+ brokerConfig.getClusterName() +" successfully connected ");
+    logger.info("Cluster: "+ _brokerConfig.getClusterName() +" successfully connected ");
   }
 
   public static Map<String, String[]> extractFacetInfo(SenseiSystemInfo sysInfo) {
@@ -735,25 +724,15 @@ public abstract class AbstractSenseiClientServlet extends ZookeeperConfigurableS
         }
         finally
         {
-          try{
-            if (_networkClient!=null){
-              _networkClient.shutdown();
-              _networkClient = null;
+          try {
+            if (_brokerConfig!=null){
+            	_brokerConfig.shutdown();
+            	_brokerConfig = null;
             }
           }
-          finally{
-            try
-            {
-              if (_clusterClient!=null)
-              {
-                _clusterClient.shutdown();
-                _clusterClient = null;
-              }
-            }
-            finally
-            {
+          finally
+          {
               _statTimer.cancel();
-            }
           }
         }
       }

@@ -6,8 +6,6 @@ import java.util.Set;
 
 import org.apache.log4j.Logger;
 
-import com.google.protobuf.Message;
-import com.linkedin.norbert.javacompat.cluster.Node;
 import com.senseidb.search.req.SenseiRequest;
 import com.senseidb.search.req.SenseiSystemInfo;
 
@@ -25,7 +23,7 @@ public class SenseiSysScatterGatherHandler extends AbstractSenseiScatterGatherHa
   }
 
   @Override
-  public SenseiRequest customizeRequest(SenseiRequest senseiRequest, Node node, Set<Integer> partitions) {
+	  public SenseiRequest customizeRequest(SenseiRequest senseiRequest, Set<Integer> partitions) {
     senseiRequest.setPartitions(partitions);
     return senseiRequest;
   }

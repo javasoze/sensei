@@ -242,16 +242,22 @@
 		</dependency>
 
 		<dependency>
-			<groupId>com.linkedin</groupId>
-			<artifactId>norbert_2.8.1</artifactId>
-			<version>0.6.16-SNAPSHOT</version>
+			<groupId>com.senseidb.zu</groupId>
+			<artifactId>zu-core</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
 
 		<dependency>
-			<groupId>com.yammer.metrics</groupId>
-			<artifactId>metrics-core</artifactId>
-			<version>2.0.0-RC0</version>
+			<groupId>com.senseidb.zu</groupId>
+			<artifactId>zu-finagle</artifactId>
+			<version>0.0.1-SNAPSHOT</version>
 		</dependency>
+
+		<dependency>
+           <groupId>com.yammer.metrics</groupId>
+           <artifactId>metrics-core</artifactId>
+           <version>2.0.0-RC0</version>
+        </dependency>
 
 		<dependency>
 			<groupId>javax.servlet</groupId>

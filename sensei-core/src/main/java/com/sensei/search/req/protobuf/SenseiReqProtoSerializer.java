@@ -3,11 +3,10 @@ package com.sensei.search.req.protobuf;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.TextFormat;
-import com.linkedin.norbert.network.Serializer;
 import com.senseidb.search.req.SenseiRequest;
 import com.senseidb.search.req.SenseiResult;
 
-public class SenseiReqProtoSerializer implements Serializer<SenseiRequest, SenseiResult> {
+public class SenseiReqProtoSerializer {
 	public String requestName() {
 		return SenseiRequestBPO.Request.getDescriptor().getName();
 	}

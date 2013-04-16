@@ -1,11 +1,9 @@
 package com.senseidb.search.req.mapred.functions.groupby;
 
-import it.unimi.dsi.fastutil.longs.Long2ObjectArrayMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -17,12 +15,8 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import scala.actors.threadpool.Arrays;
-
-import com.alibaba.fastjson.util.IdentityHashMap;
 import com.browseengine.bobo.api.BoboIndexReader;
 import com.browseengine.bobo.facets.data.TermValueList;
-import com.browseengine.bobo.util.BigSegmentedArray;
 import com.senseidb.search.req.mapred.CombinerStage;
 import com.senseidb.search.req.mapred.FacetCountAccessor;
 import com.senseidb.search.req.mapred.FieldAccessor;

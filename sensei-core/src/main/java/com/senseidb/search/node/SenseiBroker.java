@@ -1,30 +1,20 @@
 package com.senseidb.search.node;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-
-import java.lang.management.ManagementFactory;
+import java.net.InetSocketAddress;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
-import java.util.concurrent.ExecutionException;
-
-import javax.management.MBeanServer;
-import javax.management.ObjectName;
 
 import org.apache.log4j.Logger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.search.SortField;
 
 import proj.zoie.api.indexing.AbstractZoieIndexable;
+import zu.core.cluster.ZuCluster;
+import zu.core.cluster.ZuClusterEventListener;
 
 import com.browseengine.bobo.api.FacetSpec;
-import com.linkedin.norbert.NorbertException;
-import com.linkedin.norbert.cluster.ClusterDisconnectedException;
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.cluster.Node;
-import com.linkedin.norbert.javacompat.network.PartitionedNetworkClient;
 import com.senseidb.conf.SenseiSchema;
 import com.senseidb.indexing.DefaultJsonSchemaInterpreter;
 import com.senseidb.search.req.ErrorType;
@@ -40,29 +30,24 @@ import com.yammer.metrics.core.MetricName;
 
 /**
  * This SenseiBroker routes search(browse) request using the routers created by
- * the supplied router factory. It uses Norbert's scatter-gather handling
+ * the supplied router factory. It uses scatter-gather handling
  * mechanism to handle distributed search, which does not support request based
  * context sensitive routing.
  */
-public class SenseiBroker extends AbstractConsistentHashBroker<SenseiRequest, SenseiResult> 
+public class SenseiBroker extends AbstractConsistentHashBroker<SenseiRequest, SenseiResult> implements ZuClusterEventListener
 {
   private final static Logger logger = Logger.getLogger(SenseiBroker.class);
 
- 
-  private final boolean allowPartialMerge;
-  private final ClusterClient clusterClient;
+	private final boolean allowPartialMerge;
+	private Set<InetSocketAddress> nodeAddresses = Collections.emptySet();
+	private static Counter numberOfNodesInTheCluster = Metrics.newCounter(new MetricName(SenseiBroker.class,
+			"numberOfNodesInTheCluster"));
+    private volatile boolean disconnected;
 
-  private volatile boolean disconnected;
-  
-  private static Counter numberOfNodesInTheCluster = Metrics.newCounter(new MetricName(SenseiBroker.class, "numberOfNodesInTheCluster"));
-  public SenseiBroker(PartitionedNetworkClient<String> networkClient, ClusterClient clusterClient, boolean allowPartialMerge)
-      throws NorbertException {
-    super(networkClient, CoreSenseiServiceImpl.JAVA_SERIALIZER);
-    this.clusterClient = clusterClient;
-    this.allowPartialMerge = allowPartialMerge;
-    clusterClient.addListener(this);    
-    logger.info("created broker instance " + networkClient + " " + clusterClient);
-  }
+	public SenseiBroker(ZuCluster clusterClient, boolean allowPartialMerge) {
+		super(clusterClient, CoreSenseiServiceImpl.JAVA_SERIALIZER);
+		this.allowPartialMerge = allowPartialMerge;
+	}
 
   public static void recoverSrcData(SenseiResult res, SenseiHit[] hits, boolean isFetchStoredFields)
   {
@@ -203,75 +188,37 @@ public class SenseiBroker extends AbstractConsistentHashBroker<SenseiRequest, Se
     return request;
   }
 
-  
-
-  public void handleClusterConnected(Set<Node> nodes)
-  {
-    
-    //    _loadBalancer = _loadBalancerFactory.newLoadBalancer(nodes);
-    _partitions = getPartitions(nodes);
-    logger.info("handleClusterConnected(): Received the list of nodes from norbert " + nodes.toString());
-    logger.info("handleClusterConnected(): Received the list of partitions from router " + _partitions.toString());
-  }
-
-  public  void updateNumberOfNodesMetric() {
-    synchronized(SenseiBroker.class) {
-      numberOfNodesInTheCluster.clear();
-      numberOfNodesInTheCluster.inc(getNumberOfNodes());
-    }
-    
-  }
-
-  public void handleClusterDisconnected()
-  {
-    
-    logger.info("handleClusterDisconnected() called");
-    _partitions = new IntOpenHashSet();
-  }
-
-  public void handleClusterNodesChanged(Set<Node> nodes)
-  {
-
-//    _loadBalancer = _loadBalancerFactory.newLoadBalancer(nodes);
-    _partitions = getPartitions(nodes);
-    updateNumberOfNodesMetric();
-    logger.info("handleClusterNodesChanged(): Received the list of nodes from norbert " + nodes.toString());
-    logger.info("handleClusterNodesChanged(): Received the list of partitions from router " + _partitions.toString());
-
-  }
-
-  @Override
-  public void handleClusterShutdown()
-  {
-    logger.info("handleClusterShutdown() called");
-  }
 
   @Override
   public boolean allowPartialMerge() {
     return allowPartialMerge;
   }
 
-
-	public int getNumberOfNodes() {
-		int count = 0;
-	  for (Node node : clusterClient.getNodes()) {
-		  if (node.isAvailable()) {
-		    count++;
-		  }
-		}
-	  return count;
-	}
-  @Override
-  protected List<SenseiResult> doCall(SenseiRequest req) throws ExecutionException {
-    try {
-    // TODO Auto-generated method stub
-    return super.doCall(req);
-    } catch (ClusterDisconnectedException ex) {
-      disconnected = true;
-      throw ex;
-    }
-  }
 	public boolean isDisconnected() {
 	  return disconnected;
 	}
+
+	@Override
+	protected String getMessageType() {
+		return CoreSenseiServiceImpl.MESSAGE_TYPE_NAME;
+	}
+
+	@Override
+	public void clusterChanged(Map<Integer, List<InetSocketAddress>> clusterView) {
+		logger.info("clusterChanged(): Received new clusterView from zu " + clusterView);
+		Set<InetSocketAddress> nodeAddresses = getNodesAddresses(clusterView);
+		this.nodeAddresses = nodeAddresses;
+	}
+
+	public void updateNumberOfNodesMetric() {
+		synchronized (SenseiBroker.class) {
+			numberOfNodesInTheCluster.clear();
+			numberOfNodesInTheCluster.inc(nodeAddresses.size());
+		}
+	}
+
+	@Override
+	public void nodesRemoved(Set<InetSocketAddress> nodesRemoved) {
+	}
+
 }

@@ -3,26 +3,24 @@ package com.senseidb.svc.impl;
 import java.io.IOException;
 import java.util.List;
 
-import com.sensei.search.req.protobuf.SenseiSysReqProtoSerializer;
 import org.apache.log4j.Logger;
+
+import zu.finagle.serialize.JOSSSerializer;
+import zu.finagle.serialize.ZuSerializer;
 
 import com.browseengine.bobo.api.BoboBrowser;
 import com.browseengine.bobo.api.BoboIndexReader;
 import com.browseengine.bobo.api.MultiBoboBrowser;
-import com.linkedin.norbert.network.JavaSerializer;
-import com.linkedin.norbert.network.Serializer;
 import com.senseidb.search.node.SenseiCore;
 import com.senseidb.search.node.SenseiQueryBuilderFactory;
 import com.senseidb.search.req.SenseiRequest;
 import com.senseidb.search.req.SenseiSystemInfo;
 
 public class SysSenseiCoreServiceImpl extends AbstractSenseiCoreService<SenseiRequest, SenseiSystemInfo>{
-	public static final Serializer<SenseiRequest, SenseiSystemInfo> JAVA_SERIALIZER =
-			JavaSerializer.apply("SenseiSysRequest", SenseiRequest.class, SenseiSystemInfo.class);
 
-	public static final Serializer<SenseiRequest, SenseiSystemInfo> PROTO_SERIALIZER =
-			new SenseiSysReqProtoSerializer();
-
+	public static final ZuSerializer<SenseiRequest, SenseiSystemInfo> JAVA_SERIALIZER = new JOSSSerializer<SenseiRequest, SenseiSystemInfo>();
+	public static final String MESSAGE_TYPE_NAME = "SenseiSysRequest";
+	
   private static final Logger logger = Logger.getLogger(SysSenseiCoreServiceImpl.class);
   
   public SysSenseiCoreServiceImpl(SenseiCore core) {
@@ -81,8 +79,13 @@ public class SysSenseiCoreServiceImpl extends AbstractSenseiCoreService<SenseiRe
 	}
 
 	@Override
-	public Serializer<SenseiRequest, SenseiSystemInfo> getSerializer() {
-		return PROTO_SERIALIZER;
+	public String getMessageTypeName() {
+		return MESSAGE_TYPE_NAME;
+	};
+	
+	@Override
+	public ZuSerializer<SenseiRequest, SenseiSystemInfo> getSerializer() {
+		return JAVA_SERIALIZER;
 	}
 }
 

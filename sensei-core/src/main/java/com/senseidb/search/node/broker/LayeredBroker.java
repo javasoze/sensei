@@ -5,8 +5,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
-import com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory;
 import com.senseidb.conf.SenseiConfParams;
 import com.senseidb.plugin.SenseiPlugin;
 import com.senseidb.plugin.SenseiPluginRegistry;
@@ -33,15 +31,11 @@ public class LayeredBroker implements SenseiPlugin, Broker<SenseiRequest, Sensei
     if (federatedPruner == null) {
       federatedPruner = new AllClustersPruner();
     }
-    PartitionedLoadBalancerFactory<String> routerFactory = pluginRegistry.getBeanByFullPrefix(SenseiConfParams.SERVER_SEARCH_ROUTER_FACTORY, PartitionedLoadBalancerFactory.class);
-    if (routerFactory == null) {
-      routerFactory = new SenseiPartitionedLoadBalancerFactory(50);
-    }
     for (String cluster : clustersConfig.split(",")) {
       String trimmed = cluster.trim();
       if (trimmed.length() > 0) {
         clusters.add(trimmed);
-        clusterBrokerConfig.put(trimmed, new CompoundBrokerConfig(pluginRegistry.getConfiguration(), routerFactory, config, trimmed));
+        clusterBrokerConfig.put(trimmed, new CompoundBrokerConfig(pluginRegistry.getConfiguration(),  config, trimmed));
       }
     }    
   }
@@ -60,8 +54,7 @@ public class LayeredBroker implements SenseiPlugin, Broker<SenseiRequest, Sensei
   public void stop() {
     for (CompoundBrokerConfig brokerConfig : clusterBrokerConfig.values()) {
       brokerConfig.getSenseiBroker().shutdown();
-      brokerConfig.getNetworkClient().shutdown();
-      brokerConfig.getClusterClient().shutdown();
+      brokerConfig.shutdown();
     }
   }
   

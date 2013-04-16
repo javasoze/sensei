@@ -6,15 +6,12 @@ import java.util.List;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import scala.actors.threadpool.Arrays;
-
 import com.senseidb.search.req.mapred.CombinerStage;
 import com.senseidb.search.req.mapred.FacetCountAccessor;
 import com.senseidb.search.req.mapred.FieldAccessor;
 import com.senseidb.search.req.mapred.IntArray;
 import com.senseidb.search.req.mapred.SenseiMapReduce;
 import com.senseidb.search.req.mapred.SingleFieldAccessor;
-import com.senseidb.util.JSONUtil.FastJSONArray;
 import com.senseidb.util.JSONUtil.FastJSONObject;
 
 public class MaxMapReduce implements SenseiMapReduce<MaxResult, MaxResult> {

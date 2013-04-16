@@ -11,7 +11,6 @@ public interface SenseiConfParams {
 	public static final String SERVER_REQ_THREAD_POOL_MAXSIZE = "sensei.server.requestThreadMaxPoolSize";
 	public static final String SERVER_REQ_THREAD_POOL_KEEPALIVE = "sensei.server.requestThreadKeepAliveTimeSecs";
 
-	public static final String SENSEI_CLUSTER_CLIENT_NAME = "sensei.cluster.client-name";
 	public static final String SENSEI_CLUSTER_NAME = "sensei.cluster.name";
 	public static final String SENSEI_CLUSTER_URL = "sensei.cluster.url";
 	public static final String SENSEI_CLUSTER_TIMEOUT = "sensei.cluster.timeout";
@@ -76,7 +75,6 @@ public interface SenseiConfParams {
 	public static final String SENSEI_BROKER_MIN_RESPONSES = "sensei.broker.minResponses";
 	public static final String SENSEI_BROKER_MAX_TOTAL_WAIT = "sensei.broker.maxTotalWait";
 	public static final String SENSEI_ACTIVITY_CONFIG = "sensei.activity.config";
-	public static final String SERVER_SEARCH_ROUTER_FACTORY = "sensei.search.router.factory";
 
 	public static final String SENSEI_INDEX_PRUNER = "sensei.index.pruner";
 	public static final String SENSEI_REQUEST_POSTPROCESSOR = "sensei.request.postrocessor";

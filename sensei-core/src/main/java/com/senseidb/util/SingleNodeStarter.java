@@ -3,13 +3,10 @@ package com.senseidb.util;
 import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.HashMap;
 
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.mortbay.jetty.Server;
 
-import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
-import com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory;
 import com.senseidb.conf.SenseiConfParams;
 import com.senseidb.conf.SenseiServerBuilder;
 import com.senseidb.search.node.SenseiBroker;
@@ -24,7 +21,7 @@ public class SingleNodeStarter {
   private static Server jettyServer;
   private static SenseiServer server;
   private static SenseiBroker senseiBroker;
-  private static BrokerConfig brokerConfig;
+	private static BrokerConfig brokerConfig;
 
   public static void start(String localPath, int expectedDocs) {
     start(new File(getUri(localPath)), expectedDocs);
@@ -47,8 +44,7 @@ public class SingleNodeStarter {
             shutdown();
           }
         });
-        PartitionedLoadBalancerFactory balancerFactory = new SenseiPartitionedLoadBalancerFactory(50);
-         brokerConfig = new BrokerConfig(senseiConfiguration, balancerFactory);
+        brokerConfig = new BrokerConfig(senseiConfiguration);
         brokerConfig.init();
          senseiBroker = brokerConfig.buildSenseiBroker();
         waitTillServerStarts(expectedDocs);
@@ -107,15 +103,24 @@ public class SingleNodeStarter {
     }
   }
   
-  public static void shutdown() {
-    senseiBroker = null;
-    try {
-      jettyServer.stop();
-    } catch (Exception e) {
-      e.printStackTrace();
-    } finally {
-      server.shutdown();
-      serverStarted = false;
-    }
-  }
+	public static void shutdown() {
+		try {
+			jettyServer.stop();
+		} catch (Exception e) {
+			e.printStackTrace();
+		} finally {
+			server.shutdown();
+			serverStarted = false;
+			try {
+				senseiBroker.shutdown();
+			} finally {
+				senseiBroker = null;
+				try {
+					brokerConfig.shutdown();
+				} finally {
+					brokerConfig = null;
+				}
+			}
+		}
+	}
 }

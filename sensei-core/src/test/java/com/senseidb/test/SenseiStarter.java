@@ -11,10 +11,8 @@ import org.mortbay.jetty.Server;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.support.ClassPathXmlApplicationContext;
 
-import com.linkedin.norbert.NorbertException;
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.network.NetworkServer;
-import com.senseidb.cluster.client.SenseiNetworkClient;
+import zu.core.cluster.ZuCluster;
+
 import com.senseidb.conf.SenseiServerBuilder;
 import com.senseidb.jmx.JmxSenseiMBeanServer;
 import com.senseidb.search.node.SenseiBroker;
@@ -45,16 +43,14 @@ public class SenseiStarter {
   public static SenseiServer node2;
   public static Server httpServer1;
   public static Server httpServer2;
-  public static SenseiNetworkClient networkClient;
-  public static ClusterClient clusterClient;
   public static SenseiRequestScatterRewriter requestRewriter;
-  public static NetworkServer networkServer1;
-  public static NetworkServer networkServer2;
   public static final String SENSEI_TEST_CONF_FILE="sensei-test.spring";
   public static SenseiZoieFactory<?> _zoieFactory;
   public static boolean started = false;
 
    public static URL  federatedBrokerUrl;
+
+	private static ZuCluster clusterClient;
   
 
   /**
@@ -90,13 +86,13 @@ public class SenseiStarter {
     broker = null;
     try
     {
-      broker = new SenseiBroker(networkClient, clusterClient, true);
-    } catch (NorbertException ne) {
+      broker = new SenseiBroker(clusterClient, true);
+    } catch (Exception ne) {
       logger.info("shutting down cluster...", ne);
         clusterClient.shutdown();
         throw ne;
     }
-    httpRestSenseiService = new HttpRestSenseiServiceImpl("http", "localhost", 8079, "/sensei");
+		httpRestSenseiService = new HttpRestSenseiServiceImpl("http", "localhost", 8079, "/sensei");
     logger.info("Cluster client started");
     Runtime.getRuntime().addShutdownHook(new Thread(){
       @Override
@@ -144,15 +140,11 @@ public class SenseiStarter {
     } catch(Throwable e)
     {
       if (e instanceof InstanceAlreadyExistsException)
-        logger.warn("norbert JMX InstanceAlreadyExistsException");
+        logger.warn("JMX InstanceAlreadyExistsException");
       else
         logger.error("Unexpected Exception", e.getCause());
     }
-    networkClient = (SenseiNetworkClient)testSpringCtx.getBean("network-client");
-    clusterClient = (ClusterClient)testSpringCtx.getBean("cluster-client");
-    requestRewriter = (SenseiRequestScatterRewriter)testSpringCtx.getBean("request-rewriter");
-    networkServer1 = (NetworkServer)testSpringCtx.getBean("network-server-1");
-    networkServer2 = (NetworkServer)testSpringCtx.getBean("network-server-2");
+    clusterClient = (ZuCluster)testSpringCtx.getBean("cluster-client");
     _zoieFactory = (SenseiZoieFactory<?>)testSpringCtx.getBean("zoie-system-factory");
   }
 
@@ -177,7 +169,6 @@ public class SenseiStarter {
     try{httpServer1.stop();}catch(Throwable t){}
     try{node2.shutdown();}catch(Throwable t){}
     try{httpServer2.stop();}catch(Throwable t){}
-    try{networkClient.shutdown();}catch(Throwable t){}
     try{clusterClient.shutdown();}catch(Throwable t){}
     rmrf(IndexDir);
     started = false;

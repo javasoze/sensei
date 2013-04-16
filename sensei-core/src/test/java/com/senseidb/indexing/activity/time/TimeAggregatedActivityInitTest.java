@@ -2,9 +2,9 @@ package com.senseidb.indexing.activity.time;
 
 import static org.junit.Assert.*;
 
-import org.junit.Test;
+import java.util.Arrays;
 
-import scala.actors.threadpool.Arrays;
+import org.junit.Test;
 
 import com.senseidb.indexing.activity.primitives.ActivityIntValues;
 import com.senseidb.indexing.activity.time.TimeAggregatedActivityValues.IntValueHolder;

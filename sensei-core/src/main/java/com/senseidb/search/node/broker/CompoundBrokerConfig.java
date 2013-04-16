@@ -4,13 +4,12 @@ import java.util.Map;
 
 import org.apache.commons.configuration.Configuration;
 
-import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
 import com.senseidb.conf.SenseiConfParams;
 import com.senseidb.servlet.SenseiConfigServletContextListener;
 
 public class CompoundBrokerConfig extends BrokerConfig {
-  public CompoundBrokerConfig(Configuration senseiConf, PartitionedLoadBalancerFactory<String> loadBalancerFactory, Map<String,String> config, String clusterName) {
-    super(senseiConf, loadBalancerFactory);
+  public CompoundBrokerConfig(Configuration senseiConf,  Map<String,String> config, String clusterName) {
+    super(senseiConf);
     
     this.clusterName = clusterName;
     if (config.containsKey(clusterName + ".clusterName")) {

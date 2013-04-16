@@ -1,13 +1,12 @@
 package com.senseidb.test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import junit.framework.TestCase;
 
 import org.apache.log4j.Logger;
 import org.apache.lucene.search.SortField;
-
-import scala.actors.threadpool.Arrays;
 
 import com.browseengine.bobo.api.BrowseFacet;
 import com.browseengine.bobo.api.BrowseSelection;

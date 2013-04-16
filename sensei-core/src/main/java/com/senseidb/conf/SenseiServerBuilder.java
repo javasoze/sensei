@@ -54,16 +54,12 @@ import proj.zoie.impl.indexing.DefaultReaderCache;
 import proj.zoie.impl.indexing.ReaderCacheFactory;
 import proj.zoie.impl.indexing.SimpleReaderCache;
 import proj.zoie.impl.indexing.ZoieConfig;
+import zu.core.cluster.ZuCluster;
+import zu.finagle.server.ZuFinagleServer;
+import zu.finagle.server.ZuTransportService;
 
 import com.browseengine.bobo.facets.FacetHandler;
 import com.browseengine.bobo.facets.RuntimeFacetHandlerFactory;
-import com.linkedin.norbert.javacompat.cluster.ClusterClient;
-import com.linkedin.norbert.javacompat.cluster.ZooKeeperClusterClient;
-import com.linkedin.norbert.javacompat.network.NettyNetworkServer;
-import com.linkedin.norbert.javacompat.network.NetworkServer;
-import com.linkedin.norbert.javacompat.network.NetworkServerConfig;
-import com.linkedin.norbert.javacompat.network.PartitionedLoadBalancerFactory;
-import com.senseidb.cluster.routing.SenseiPartitionedLoadBalancerFactory;
 import com.senseidb.gateway.SenseiGateway;
 import com.senseidb.indexing.CustomIndexingPipeline;
 import com.senseidb.indexing.DefaultJsonSchemaInterpreter;
@@ -102,8 +98,8 @@ import com.senseidb.svc.impl.AbstractSenseiCoreService;
 import com.senseidb.util.HDFSIndexCopier;
 import com.senseidb.util.NetUtil;
 import com.senseidb.util.SenseiUncaughtExceptionHandler;
-import com.senseidb.util.JSONUtil.FastJSONArray;
 import com.senseidb.util.JSONUtil.FastJSONObject;
+import com.twitter.common.net.pool.DynamicHostSet.MonitorException;
 
 public class SenseiServerBuilder implements SenseiConfParams{
 
@@ -136,34 +132,7 @@ public class SenseiServerBuilder implements SenseiConfParams{
     return pluginRegistry;
   }
 
-
-  public ClusterClient buildClusterClient()
-  {
-    String clusterName = _senseiConf.getString(SENSEI_CLUSTER_NAME);
-    String clusterClientName = _senseiConf.getString(SENSEI_CLUSTER_CLIENT_NAME,clusterName);
-    String zkUrl = _senseiConf.getString(SENSEI_CLUSTER_URL);
-    int zkTimeout = _senseiConf.getInt(SENSEI_CLUSTER_TIMEOUT, 300000);
-    ClusterClient clusterClient =  new ZooKeeperClusterClient(clusterClientName, clusterName, zkUrl, zkTimeout);
-
-    logger.info("Connecting to cluster: "+clusterName+" ...");
-    clusterClient.awaitConnectionUninterruptibly();
-
-    logger.info("Cluster: "+clusterName+" successfully connected ");
-
-    return clusterClient;
-  }
-
-  private static NetworkServer buildNetworkServer(Configuration conf,ClusterClient clusterClient){
-    NetworkServerConfig networkConfig = new NetworkServerConfig();
-    networkConfig.setClusterClient(clusterClient);
-
-    networkConfig.setRequestThreadCorePoolSize(conf.getInt(SERVER_REQ_THREAD_POOL_SIZE, 20));
-    networkConfig.setRequestThreadMaxPoolSize(conf.getInt(SERVER_REQ_THREAD_POOL_MAXSIZE,70));
-    networkConfig.setRequestThreadKeepAliveTimeSecs(conf.getInt(SERVER_REQ_THREAD_POOL_KEEPALIVE,300));
-    return new NettyNetworkServer(networkConfig);
-  }
-
-  static{
+	static{
     try{
       org.mortbay.log.Log.setLog(new org.mortbay.log.Slf4jLog());
     }
@@ -215,12 +184,6 @@ public class SenseiServerBuilder implements SenseiConfParams{
     senseiApp.setAttribute(SenseiConfigServletContextListener.SENSEI_CONF_PLUGIN_REGISTRY, pluginRegistry);
     senseiApp.setAttribute("sensei.search.version.comparator", _gateway != null ? _gateway.getVersionComparator() : ZoieConfig.DEFAULT_VERSION_COMPARATOR);
 
-    PartitionedLoadBalancerFactory<String> routerFactory = pluginRegistry.getBeanByFullPrefix(SenseiConfParams.SERVER_SEARCH_ROUTER_FACTORY, PartitionedLoadBalancerFactory.class);
-    if (routerFactory == null) {
-      routerFactory = new SenseiPartitionedLoadBalancerFactory(50);
-    }
-
-    senseiApp.setAttribute("sensei.search.router.factory", routerFactory);
     senseiApp.addEventListener(new SenseiConfigServletContextListener());
     senseiApp.addServlet(senseiServletHolder,"/"+SENSEI_CONTEXT_PATH+"/*");
     senseiApp.setResourceBase(webappPath);
@@ -626,23 +589,41 @@ public class SenseiServerBuilder implements SenseiConfParams{
     return _gateway.getVersionComparator();
   }
 
-  public SenseiServer buildServer() throws ConfigurationException {
-    int port = _senseiConf.getInt(SERVER_PORT);
-    JmxSenseiMBeanServer.registerCustomMBeanServer();
+	public SenseiServer buildServer() throws ConfigurationException {
+		JmxSenseiMBeanServer.registerCustomMBeanServer();
 
-    ClusterClient clusterClient = buildClusterClient();
+		ZuCluster cluster = buildClusterClient();
+		
+		int nodeid = _senseiConf.getInt(NODE_ID);
+		ZuTransportService transportService = new ZuTransportService();
+		int serverPort = _senseiConf.getInt(SERVER_PORT);
+		ZuFinagleServer server = new ZuFinagleServer("sensei-finagle-server-" + nodeid, serverPort, transportService.getService());
 
-    NetworkServer networkServer = buildNetworkServer(_senseiConf,clusterClient);
+		SenseiCore core = buildCore();
 
-    SenseiCore core = buildCore();
+		List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> svcList = (List) pluginRegistry
+				.resolveBeansByListKey(SENSEI_PLUGIN_SVCS, AbstractSenseiCoreService.class);
 
-    List<AbstractSenseiCoreService<AbstractSenseiRequest, AbstractSenseiResult>> svcList = (List)pluginRegistry.resolveBeansByListKey(SENSEI_PLUGIN_SVCS, AbstractSenseiCoreService.class);
-
-
-    return new SenseiServer(port,networkServer,clusterClient,core,svcList, pluginRegistry);
-
+		return new SenseiServer(serverPort, core, svcList, pluginRegistry, transportService, server, cluster);
   }
-  /*
+
+	private ZuCluster buildClusterClient() {
+		String clusterName = _senseiConf.getString(SENSEI_CLUSTER_NAME);
+		String zkUrl = _senseiConf.getString(SENSEI_CLUSTER_URL);
+		int zkTimeout = _senseiConf.getInt(SENSEI_CLUSTER_TIMEOUT, 300000);
+
+		String[] url = zkUrl.split(":");
+		String host = url[0];
+		int zkPort = Integer.parseInt(url[1]);
+		ZuCluster cluster = null;
+		try {
+			cluster = new ZuCluster(host, zkPort, clusterName, zkTimeout);
+		} catch (MonitorException e) {
+			throw new RuntimeException(e);
+		}
+		return cluster;
+	}
+	/*
   public HttpAdaptor buildJMXAdaptor(){
    int jmxport = _senseiConf.getInt(SENSEI_MX4J_PORT,15555);
    HttpAdaptor httpAdaptor = new HttpAdaptor(jmxport);
